@@ -7,6 +7,11 @@ load_dotenv()
 
 
 def get_connection():
+    database_url = os.getenv("DATABASE_URL")
+
+    if database_url:
+        return psycopg.connect(database_url)
+
     return psycopg.connect(
         host=os.getenv("DATABASE_HOST"),
         port=os.getenv("DATABASE_PORT"),
@@ -16,41 +21,55 @@ def get_connection():
     )
 
 
-def save_message(role, content):
-    connection = get_connection()# save_message() --> get_connection() --> PostgreSQL
+def initialize_database():
+    connection = get_connection()
 
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO conversations (role, content)
-        VALUES (%s, %s); -- parameterized queries separater
-        """,
-        (role, content),
-    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id SERIAL PRIMARY KEY,
+                role VARCHAR(20) NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
 
     connection.commit()
+    connection.close()
 
-    cursor.close()
+
+def save_message(role, content):
+    connection = get_connection()
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO conversations (role, content)
+            VALUES (%s, %s);
+            """,
+            (role, content),
+        )
+
+    connection.commit()
     connection.close()
 
 
 def get_messages():
     connection = get_connection()
 
-    cursor = connection.cursor()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, role, content, created_at
+            FROM conversations
+            ORDER BY created_at ASC;
+            """
+        )
 
-    cursor.execute(
-        """
-        SELECT id, role, content, created_at
-        FROM conversations
-        ORDER BY created_at ASC;
-        """
-    )
+        messages = cursor.fetchall()
 
-    messages = cursor.fetchall()
-
-    cursor.close()
     connection.close()
 
     return messages
@@ -65,12 +84,4 @@ COMMIT
         ↓  
 CLOSE CURSOR
         ↓
-CLOSE CONNECTION 
-"""
-if __name__ == "__main__":
-    save_message("user", "Testing PostgreSQL memory.")
-
-    messages = get_messages()
-
-    for message in messages:
-        print(message)
+CLOSE CONNECTION """

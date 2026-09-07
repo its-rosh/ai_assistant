@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>My AI Assistant</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+    <div class="chat-container">
+
+        <header class="header">
+
+            <h1>My AI Assistant</h1>
+
+            <p>
+                OpenRouter + PostgreSQL Memory
+            </p>
+
+        </header>
+
+
+        <main id="chat">
+
+        <!-- Messages will appear here -->
+
+        </main>
+
+
+        <div class="input-area">
+
+            <input
+                id="messageInput"
+                type="text"
+                placeholder="Type a message..."
+                autocomplete="off"
+            >
+
+            <button id="sendButton">
+                Send
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <script>
+
+        const chat =
+            document.getElementById("chat");
+
+        const input =
+            document.getElementById("messageInput");
+
+        const sendButton =
+            document.getElementById("sendButton");
+
+
+        function addMessage(role, content) {
+
+            const message =
+                document.createElement("div");
+
+            message.className =
+                `message ${role}`;
+
+            message.textContent =
+                content;
+
+            chat.appendChild(message);
+
+            chat.scrollTop =
+                chat.scrollHeight;
+        }
+
+
+        async function loadHistory() {
+
+            const response =
+                await fetch("/api/history");
+
+            const messages =
+                await response.json();
+
+
+            for (const message of messages) {
+
+                addMessage(
+                    message.role,
+                    message.content
+                );
+
+            }
+        }
+
+
+        async function sendMessage() {
+
+            const message =
+                input.value.trim();
+
+
+            if (!message) {
+                return;
+            }
+
+
+            addMessage(
+                "user",
+                message
+            );
+
+
+            input.value = "";
+
+            sendButton.disabled = true;
+
+            sendButton.textContent =
+                "Thinking...";
+
+
+            try {
+
+                const response =
+                    await fetch(
+                        "/api/chat",
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json"
+                            },
+
+                            body: JSON.stringify({
+                                message: message
+                            })
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                if (data.error) {
+
+                    addMessage(
+                        "assistant",
+                        `Error: ${data.error}`
+                    );
+
+                } else {
+
+                    addMessage(
+                        "assistant",
+                        data.reply
+                    );
+
+                }
+
+
+            } catch (error) {
+
+                console.error(error);
+
+                addMessage(
+                    "assistant",
+                    "Something went wrong."
+                );
+
+            }
+
+
+            sendButton.disabled = false;
+
+            sendButton.textContent =
+                "Send";
+
+            input.focus();
+        }
+
+
+        sendButton.addEventListener(
+            "click",
+            sendMessage
+        );
+
+
+        input.addEventListener(
+            "keydown",
+            function(event) {
+
+                if (event.key === "Enter") {
+
+                    sendMessage();
+
+                }
+
+            }
+        );
+
+
+        loadHistory();
+
+    </script>
+
+</body>
+
+</html>
