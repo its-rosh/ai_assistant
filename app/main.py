@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from openrouter import OpenRouter
 
-from database import (
+from app.database import (
     get_messages,
     initialize_database,
     save_message,
