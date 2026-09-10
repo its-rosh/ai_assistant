@@ -13,7 +13,9 @@ from app.database import (
 
 load_dotenv()
 
+
 app = Flask(__name__)
+
 
 api_key = os.getenv("OPENROUTER_API_KEY")
 
@@ -21,13 +23,17 @@ client = OpenRouter(
     api_key=api_key
 )
 
+
 MODEL_NAME = "inclusionai/ling-3.0-flash-fin:free"
 
+
 initialize_database()
+
 
 @app.route("/")
 def home():
     return render_template("index.html")
+
 
 @app.route("/api/history", methods=["GET"])
 def history():
@@ -48,19 +54,23 @@ def history():
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     user_input = data.get("message", "").strip()
 
     if not user_input:
-        return jsonify({"error": "Message cannot be empty."}), 400
+        return jsonify(
+            {
+                "error": "Message cannot be empty."
+            }
+        ), 400
 
     stored_messages = get_messages()
 
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful personal AI assistant."
+            "content": "You are a helpful personal AI assistant.",
         }
     ]
 
@@ -98,4 +108,8 @@ def chat():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True,
+    )

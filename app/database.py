@@ -3,10 +3,21 @@ import os
 import psycopg
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
 
 def get_connection():
+    """
+    Create and return a PostgreSQL database connection.
+
+    Locally:
+        Uses individual DATABASE_* environment variables.
+
+    On Render:
+        Uses DATABASE_URL provided by Render.
+    """
+
     database_url = os.getenv("DATABASE_URL")
 
     if database_url:
@@ -22,66 +33,86 @@ def get_connection():
 
 
 def initialize_database():
-    connection = get_connection()
+    """
+    Create the conversations table if it does not already exist.
+    """
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS conversations (
-                id SERIAL PRIMARY KEY,
-                role VARCHAR(20) NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-
-    connection.commit()
-    connection.close()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id SERIAL PRIMARY KEY,
+                    role VARCHAR(20) NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
 
 
 def save_message(role, content):
-    connection = get_connection()
+    """
+    Save one message to PostgreSQL.
+    """
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            INSERT INTO conversations (role, content)
-            VALUES (%s, %s);
-            """,
-            (role, content),
-        )
-
-    connection.commit()
-    connection.close()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO conversations (role, content)
+                VALUES (%s, %s);
+                """,
+                (role, content),
+            )
 
 
 def get_messages():
-    connection = get_connection()
+    """
+    Retrieve all conversation messages in chronological order.
+    """
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, role, content, created_at
-            FROM conversations
-            ORDER BY created_at ASC;
-            """
-        )
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, role, content, created_at
+                FROM conversations
+                ORDER BY id ASC;
+                """
+            )
 
-        messages = cursor.fetchall()
+            return cursor.fetchall()
 
-    connection.close()
-
-    return messages
-
-"""GET CONNECTION
-        ↓
-CREATE CURSOR
-        ↓
-EXECUTE SQL
-        ↓
-COMMIT
-        ↓  
-CLOSE CURSOR
-        ↓
-CLOSE CONNECTION """
+"""User
+    │
+"Hello"
+    ▼
+Flask /api/chat
+    │
+    ▼
+get_messages()
+    │
+    ▼
+PostgreSQL
+    │
+    ▼
+Previous messages
+    │
+    ▼
+messages[]
+    │
+    ▼
+OpenRouter
+    │
+    ▼
+Ling 3.0
+    │
+    ▼
+Assistant response
+    │
+    ▼
+save_message()
+    │
+    ▼
+PostgreSQL """

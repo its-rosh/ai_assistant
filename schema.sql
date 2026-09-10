@@ -4,3 +4,4 @@ CREATE TABLE conversations (
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
