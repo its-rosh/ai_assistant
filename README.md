@@ -30,55 +30,22 @@ The main goal of this project is not just to build the application, but to under
 ### Current Architecture
 
 ```text
-The program does:
-"My favorite language is Python."
-               │
-               ▼
-       append to messages[]
-               │
-               ▼
-       save_message()
-               │
-               ▼
-          PostgreSQL
-               │
-               ▼
-           OpenRouter
-               │
-               ▼
-              LLM
-               │
-               ▼
-       assistant response
-               │
-          ┌────┴────┐
-          ▼         ▼
-     messages[] PostgreSQL
-START
- │
- ▼
-load .env
- │
- ▼
-create OpenRouter client
- │
- ▼
-create system message
- │
- ▼
+User message
+      ↓
 get_messages()
- │
- ▼
+      ↓
 PostgreSQL
- │
- ▼
-retrieve old conversations
- │
- ▼
-convert them into OpenRouter format
- │
- ▼
-wait for user input
-
-Then you type:
-You: My favorite language is Python.
+      ↓
+retrieve previous messages
+      ↓
+build messages[]
+      ↓
+current question
+      ↓
+OpenRouter
+      ↓
+Ling model
+      ↓
+response
+      ↓
+save response to PostgreSQL
