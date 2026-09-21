@@ -1,5 +1,6 @@
 import os
 
+from app.auth import auth_bp, login_manager
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
@@ -13,7 +14,16 @@ from app.rag import answer_question
 
 load_dotenv()
 
+## initialize flask log in
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv(
+    "SECRET_KEY",
+    "development-secret-key"
+)
+
+login_manager.init_app(app)
+
+app.register_blueprint(auth_bp)   ### Flask-Login uses Flask's session mechanism. The session needs a secret key so Flask can securely sign the session information.
 
 initialize_database()
 
@@ -80,5 +90,9 @@ def chat():
             }
         ), 500
 
-
-###
+if __name__ == "__main__":
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True,
+    )

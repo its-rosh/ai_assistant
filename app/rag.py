@@ -61,10 +61,16 @@ chroma_client = chromadb.PersistentClient(
     path=CHROMA_PATH
 )
 
+## our chorma bd have two collections --- khowledge base and conversation history  
 collection = chroma_client.get_or_create_collection(
     name="knowledge_base",
     metadata={"hnsw:space": "cosine"}
 )
+memory_collection = chroma_client.get_or_create_collection(
+    name="conversation_memory",
+    metadata={"hnsw:space": "cosine"}
+)
+
 
 # Chunking
 
@@ -186,6 +192,76 @@ def build_knowledge_base():
     )
 
     return collection.count()
+
+
+def store_memory(
+    user_message,
+    assistant_message,
+    message_id
+):
+    memory_text = f"""
+User:
+{user_message}
+
+Assistant:
+{assistant_message}
+""".strip()
+
+    embedding = embedding_model.encode(
+        [memory_text]
+    )[0]
+
+    memory_collection.upsert(
+        ids=[str(message_id)],
+        documents=[memory_text],
+        embeddings=[embedding.tolist()],
+        metadatas=[
+            {
+                "type": "conversation",
+                "message_id": str(message_id),
+            }
+        ]
+    )
+
+
+## retvive form memory 
+
+
+def retrieve_memories(
+    question,
+    top_k=5,
+    distance_threshold=0.70
+):
+    query_embedding = embedding_model.encode(
+        [question]
+    )[0]
+
+    results = memory_collection.query(
+        query_embeddings=[
+            query_embedding.tolist()
+        ],
+        n_results=top_k
+    )
+
+    memories = []
+
+    if not results["documents"]:
+        return memories
+
+    for i, distance in enumerate(
+        results["distances"][0]
+    ):
+        if distance <= distance_threshold:
+            memories.append({
+                "text": results["documents"][0][i],
+                "distance": distance,
+                "message_id": results["metadatas"][0][i][
+                    "message_id"
+                ]
+            })
+
+    return memories
+
 
 # Retrieve relevant chunks
 

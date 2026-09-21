@@ -101,7 +101,7 @@ Previous messages
     │
     ▼
 messages[]
-    │
+    │   
     ▼
 OpenRouter
     │
