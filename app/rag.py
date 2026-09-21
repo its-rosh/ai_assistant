@@ -12,6 +12,13 @@ ask_llm()
         ↓
 answer_question()"""
 
+### this handles 
+"""retrieval
++
+context
++
+OpenRouter """
+
 import os
 from pathlib import Path
 

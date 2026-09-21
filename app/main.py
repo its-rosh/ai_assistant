@@ -2,7 +2,6 @@ import os
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
-from openrouter import OpenRouter
 
 from app.database import (
     get_messages,
@@ -10,25 +9,13 @@ from app.database import (
     save_message,
 )
 
+from app.rag import answer_question
 
 load_dotenv()
 
-
 app = Flask(__name__)
 
-
-api_key = os.getenv("OPENROUTER_API_KEY")
-
-client = OpenRouter(
-    api_key=api_key
-)
-
-
-MODEL_NAME = "inclusionai/ling-3.0-flash-fin:free"
-
-
 initialize_database()
-
 
 @app.route("/")
 def home():
@@ -65,51 +52,33 @@ def chat():
             }
         ), 400
 
-    stored_messages = get_messages()
+    save_message("user", user_input)
 
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a helpful personal AI assistant.",
-        }
-    ]
+    try:
+        result = answer_question(user_input)
 
-    for row in stored_messages:
-        messages.append(
+        assistant_reply = result["answer"]
+
+        sources = result["sources"]
+
+        save_message("assistant", assistant_reply)
+
+        return jsonify(
             {
-                "role": row[1],
-                "content": row[2],
+                "reply": assistant_reply,
+                "sources": sources,
             }
         )
 
-    messages.append(
-        {
-            "role": "user",
-            "content": user_input,
-        }
-    )
+    except Exception as error:
 
-    save_message("user", user_input)
+        print("RAG error:", error)
 
-    response = client.chat.send(
-        model=MODEL_NAME,
-        messages=messages,
-    )
-
-    assistant_reply = response.choices[0].message.content
-
-    save_message("assistant", assistant_reply)
-
-    return jsonify(
-        {
-            "reply": assistant_reply
-        }
-    )
+        return jsonify(
+            {
+                "error": "Something went wrong while processing your question."
+            }
+        ), 500
 
 
-if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=True,
-    )
+###
