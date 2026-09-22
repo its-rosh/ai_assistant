@@ -187,3 +187,18 @@ def logout():
     return jsonify({
         "message": "Logged out successfully."
     })
+
+@auth_bp.route("/api/me", methods=["GET"])
+def me():
+    if not current_user.is_authenticated:
+        return jsonify({
+            "authenticated": False
+        }), 401
+
+    return jsonify({
+        "authenticated": True,
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+        },
+    })
