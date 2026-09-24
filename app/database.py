@@ -51,35 +51,40 @@ def initialize_database():
             )
 
 
-def save_message(role, content):
+def save_message(user_id, role, content):
     """
-    Save one message to PostgreSQL.
+    Save one message for a specific authenticated user.
     """
-
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO conversations (role, content)
-                VALUES (%s, %s);
+                INSERT INTO conversations (user_id, role, content)
+                VALUES (%s, %s, %s)
+                RETURNING id;
                 """,
-                (role, content),
+                (user_id, role, content),
             )
 
+            message_id = cursor.fetchone()[0]
 
-def get_messages():
-    """
-    Retrieve all conversation messages in chronological order.
-    """
+            return message_id
 
+
+def get_messages(user_id):
+    """
+    Retrieve conversation history for one specific user.
+    """
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT id, role, content, created_at
                 FROM conversations
+                WHERE user_id = %s
                 ORDER BY id ASC;
-                """
+                """,
+                (user_id,),
             )
 
             return cursor.fetchall()

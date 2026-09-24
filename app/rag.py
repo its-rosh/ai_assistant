@@ -197,7 +197,8 @@ def build_knowledge_base():
 def store_memory(
     user_message,
     assistant_message,
-    message_id
+    message_id,
+    user_id
 ):
     memory_text = f"""
 User:
@@ -219,6 +220,7 @@ Assistant:
             {
                 "type": "conversation",
                 "message_id": str(message_id),
+                "user_id": str(user_id),
             }
         ]
     )
@@ -229,6 +231,7 @@ Assistant:
 
 def retrieve_memories(
     question,
+    user_id,
     top_k=5,
     distance_threshold=0.70
 ):
@@ -240,7 +243,10 @@ def retrieve_memories(
         query_embeddings=[
             query_embedding.tolist()
         ],
-        n_results=top_k
+        n_results=top_k,
+        where={
+            "user_id": str(user_id)
+        }
     )
 
     memories = []
@@ -251,14 +257,19 @@ def retrieve_memories(
     for i, distance in enumerate(
         results["distances"][0]
     ):
+
         if distance <= distance_threshold:
-            memories.append({
-                "text": results["documents"][0][i],
-                "distance": distance,
-                "message_id": results["metadatas"][0][i][
-                    "message_id"
-                ]
-            })
+
+            memories.append(
+                {
+                    "text": results["documents"][0][i],
+                    "distance": distance,
+                    "message_id":
+                        results["metadatas"][0][i][
+                            "message_id"
+                        ]
+                }
+            )
 
     return memories
 

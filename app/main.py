@@ -1,44 +1,82 @@
 import os
 
-from app.auth import auth_bp, login_manager
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import (
+    Flask,
+    jsonify,
+    render_template,
+    request,
+)
 
+from flask_login import current_user, login_required
+
+from app.auth import auth_bp, login_manager
 from app.database import (
     get_messages,
     initialize_database,
     save_message,
 )
-
 from app.rag import answer_question
+
 
 load_dotenv()
 
-## initialize flask log in
+# Initialize Flask
+
 app = Flask(__name__)
+
 app.config["SECRET_KEY"] = os.getenv(
     "SECRET_KEY",
     "development-secret-key"
 )
 
+# Initialize Flask-Login
+
 login_manager.init_app(app)
 
-app.register_blueprint(auth_bp)   ### Flask-Login uses Flask's session mechanism. The session needs a secret key so Flask can securely sign the session information.
+login_manager.login_view = "login_page"
+
+# Register authentication routes
+
+app.register_blueprint(auth_bp)
+
+# Initialize database
 
 initialize_database()
 
+# Home / Chat Page
+
 @app.route("/")
+@login_required
 def home():
     return render_template("index.html")
 
+# Login Page
+
+@app.route("/login")
+def login_page():
+    return render_template("login.html")
+
+# Signup Page
+
+@app.route("/signup")
+def signup_page():
+    return render_template("signup.html")
+
+# Conversation History
 
 @app.route("/api/history", methods=["GET"])
+@login_required
 def history():
-    stored_messages = get_messages()
+
+    stored_messages = get_messages(
+        current_user.id
+    )
 
     messages = []
 
     for row in stored_messages:
+
         messages.append(
             {
                 "role": row[1],
@@ -49,29 +87,60 @@ def history():
     return jsonify(messages)
 
 
-@app.route("/api/chat", methods=["POST"])
-def chat():
-    data = request.get_json(silent=True) or {}
+# --------------------------------------------------
+# Chat
+# --------------------------------------------------
 
-    user_input = data.get("message", "").strip()
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def chat():
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    user_input = data.get(
+        "message",
+        ""
+    ).strip()
+
 
     if not user_input:
+
         return jsonify(
             {
                 "error": "Message cannot be empty."
             }
         ), 400
 
-    save_message("user", user_input)
+
+    # Save user's message
+    save_message(
+        current_user.id,
+        "user",
+        user_input,
+    )
+
 
     try:
-        result = answer_question(user_input)
+
+        # Existing RAG system
+        result = answer_question(
+            user_input
+        )
 
         assistant_reply = result["answer"]
 
         sources = result["sources"]
 
-        save_message("assistant", assistant_reply)
+
+        # Save assistant's response
+        save_message(
+            current_user.id,
+            "assistant",
+            assistant_reply,
+        )
+
 
         return jsonify(
             {
@@ -80,17 +149,26 @@ def chat():
             }
         )
 
+
     except Exception as error:
 
-        print("RAG error:", error)
+        print(
+            "RAG error:",
+            error
+        )
+
 
         return jsonify(
             {
-                "error": "Something went wrong while processing your question."
+                "error":
+                    "Something went wrong while processing your question."
             }
         ), 500
 
+# Start Flask
+
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
         port=5000,

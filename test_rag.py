@@ -13,7 +13,7 @@ for source in result["sources"]:
     print(source)
 
 ### now we have 
-"""PDFs
+"""PDFs 
     ↓
 pypdf extraction
     ↓
