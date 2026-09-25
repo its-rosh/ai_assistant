@@ -1,47 +1,109 @@
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
-from openrouter import OpenRouter
+from flask import (
+    Flask,
+    jsonify,
+    render_template,
+    request,
+)
 
+from flask_login import current_user, login_required
+
+from app.auth import auth_bp, login_manager
 from app.database import (
     get_messages,
     initialize_database,
     save_message,
+)
+from app.rag import (
+    answer_question,
+    store_memory,
 )
 
 
 load_dotenv()
 
 
+# --------------------------------------------------
+# Initialize Flask
+# --------------------------------------------------
+
 app = Flask(__name__)
 
-
-api_key = os.getenv("OPENROUTER_API_KEY")
-
-client = OpenRouter(
-    api_key=api_key
+app.config["SECRET_KEY"] = os.getenv(
+    "SECRET_KEY",
+    "development-secret-key"
 )
 
 
-MODEL_NAME = "inclusionai/ling-3.0-flash-fin:free"
+# --------------------------------------------------
+# Initialize Flask-Login
+# --------------------------------------------------
 
+login_manager.init_app(app)
+
+login_manager.login_view = "login_page"
+
+
+# --------------------------------------------------
+# Register authentication routes
+# --------------------------------------------------
+
+app.register_blueprint(auth_bp)
+
+
+# --------------------------------------------------
+# Initialize database
+# --------------------------------------------------
 
 initialize_database()
 
 
+# --------------------------------------------------
+# Home / Chat Page
+# --------------------------------------------------
+
 @app.route("/")
+@login_required
 def home():
     return render_template("index.html")
 
 
+# --------------------------------------------------
+# Login Page
+# --------------------------------------------------
+
+@app.route("/login")
+def login_page():
+    return render_template("login.html")
+
+
+# --------------------------------------------------
+# Signup Page
+# --------------------------------------------------
+
+@app.route("/signup")
+def signup_page():
+    return render_template("signup.html")
+
+
+# --------------------------------------------------
+# Conversation History
+# --------------------------------------------------
+
 @app.route("/api/history", methods=["GET"])
+@login_required
 def history():
-    stored_messages = get_messages()
+
+    stored_messages = get_messages(
+        current_user.id
+    )
 
     messages = []
 
     for row in stored_messages:
+
         messages.append(
             {
                 "role": row[1],
@@ -52,62 +114,123 @@ def history():
     return jsonify(messages)
 
 
-@app.route("/api/chat", methods=["POST"])
-def chat():
-    data = request.get_json(silent=True) or {}
+# --------------------------------------------------
+# Chat
+# --------------------------------------------------
 
-    user_input = data.get("message", "").strip()
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def chat():
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    user_input = data.get(
+        "message",
+        ""
+    ).strip()
 
     if not user_input:
+
         return jsonify(
             {
                 "error": "Message cannot be empty."
             }
         ), 400
 
-    stored_messages = get_messages()
+    try:
 
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a helpful personal AI assistant.",
-        }
-    ]
+        # ---------------------------------
+        # Get this user's conversation history
+        # ---------------------------------
 
-    for row in stored_messages:
-        messages.append(
+        stored_messages = get_messages(
+            current_user.id
+        )
+
+        # Keep the last 10 messages
+        recent_messages = [
             {
                 "role": row[1],
                 "content": row[2],
             }
+            for row in stored_messages[-10:]
+        ]
+
+        # ---------------------------------
+        # Generate answer
+        # ---------------------------------
+
+        result = answer_question(
+            user_input,
+            current_user.id,
+            recent_messages
         )
 
-    messages.append(
-        {
-            "role": "user",
-            "content": user_input,
-        }
-    )
+        assistant_reply = result["answer"]
 
-    save_message("user", user_input)
+        sources = result["sources"]
 
-    response = client.chat.send(
-        model=MODEL_NAME,
-        messages=messages,
-    )
+        # ---------------------------------
+        # Save user's message
+        # ---------------------------------
 
-    assistant_reply = response.choices[0].message.content
+        user_message_id = save_message(
+            current_user.id,
+            "user",
+            user_input,
+        )
 
-    save_message("assistant", assistant_reply)
+        # ---------------------------------
+        # Save assistant's response
+        # ---------------------------------
 
-    return jsonify(
-        {
-            "reply": assistant_reply
-        }
-    )
+        assistant_message_id = save_message(
+            current_user.id,
+            "assistant",
+            assistant_reply,
+        )
 
+        # ---------------------------------
+        # Store semantic memory
+        # ---------------------------------
+        
+        store_memory(
+            user_message=user_input,
+            assistant_message=assistant_reply,
+            message_id=user_message_id,
+            user_id=current_user.id,
+        )
+
+        return jsonify(
+            {
+                "reply": assistant_reply,
+                "sources": sources,
+            }
+        )
+
+    except Exception as error:
+
+        print(
+            "RAG error:",
+            error
+        )
+
+        return jsonify(
+            {
+                "error":
+                    "Something went wrong while processing your question."
+            }
+        ), 500
+
+
+# --------------------------------------------------
+# Start Flask
+# --------------------------------------------------
 
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
         port=5000,
