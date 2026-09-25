@@ -16,12 +16,18 @@ from app.database import (
     initialize_database,
     save_message,
 )
-from app.rag import answer_question
+from app.rag import (
+    answer_question,
+    store_memory,
+)
 
 
 load_dotenv()
 
+
+# --------------------------------------------------
 # Initialize Flask
+# --------------------------------------------------
 
 app = Flask(__name__)
 
@@ -30,40 +36,61 @@ app.config["SECRET_KEY"] = os.getenv(
     "development-secret-key"
 )
 
+
+# --------------------------------------------------
 # Initialize Flask-Login
+# --------------------------------------------------
 
 login_manager.init_app(app)
 
 login_manager.login_view = "login_page"
 
+
+# --------------------------------------------------
 # Register authentication routes
+# --------------------------------------------------
 
 app.register_blueprint(auth_bp)
 
+
+# --------------------------------------------------
 # Initialize database
+# --------------------------------------------------
 
 initialize_database()
 
+
+# --------------------------------------------------
 # Home / Chat Page
+# --------------------------------------------------
 
 @app.route("/")
 @login_required
 def home():
     return render_template("index.html")
 
+
+# --------------------------------------------------
 # Login Page
+# --------------------------------------------------
 
 @app.route("/login")
 def login_page():
     return render_template("login.html")
 
+
+# --------------------------------------------------
 # Signup Page
+# --------------------------------------------------
 
 @app.route("/signup")
 def signup_page():
     return render_template("signup.html")
 
+
+# --------------------------------------------------
 # Conversation History
+# --------------------------------------------------
 
 @app.route("/api/history", methods=["GET"])
 @login_required
@@ -104,7 +131,6 @@ def chat():
         ""
     ).strip()
 
-
     if not user_input:
 
         return jsonify(
@@ -113,34 +139,69 @@ def chat():
             }
         ), 400
 
-
-    # Save user's message
-    save_message(
-        current_user.id,
-        "user",
-        user_input,
-    )
-
-
     try:
 
-        # Existing RAG system
+        # ---------------------------------
+        # Get this user's conversation history
+        # ---------------------------------
+
+        stored_messages = get_messages(
+            current_user.id
+        )
+
+        # Keep the last 10 messages
+        recent_messages = [
+            {
+                "role": row[1],
+                "content": row[2],
+            }
+            for row in stored_messages[-10:]
+        ]
+
+        # ---------------------------------
+        # Generate answer
+        # ---------------------------------
+
         result = answer_question(
-            user_input
+            user_input,
+            current_user.id,
+            recent_messages
         )
 
         assistant_reply = result["answer"]
 
         sources = result["sources"]
 
+        # ---------------------------------
+        # Save user's message
+        # ---------------------------------
 
+        user_message_id = save_message(
+            current_user.id,
+            "user",
+            user_input,
+        )
+
+        # ---------------------------------
         # Save assistant's response
-        save_message(
+        # ---------------------------------
+
+        assistant_message_id = save_message(
             current_user.id,
             "assistant",
             assistant_reply,
         )
 
+        # ---------------------------------
+        # Store semantic memory
+        # ---------------------------------
+        
+        store_memory(
+            user_message=user_input,
+            assistant_message=assistant_reply,
+            message_id=user_message_id,
+            user_id=current_user.id,
+        )
 
         return jsonify(
             {
@@ -149,14 +210,12 @@ def chat():
             }
         )
 
-
     except Exception as error:
 
         print(
             "RAG error:",
             error
         )
-
 
         return jsonify(
             {
@@ -165,7 +224,10 @@ def chat():
             }
         ), 500
 
+
+# --------------------------------------------------
 # Start Flask
+# --------------------------------------------------
 
 if __name__ == "__main__":
 

@@ -145,53 +145,73 @@ def build_chunks(documents):
 
     return chunks
 
-# Build / update knowledge base
+# Build / update knowledge base # Build LLM context
 
-def build_knowledge_base():
+def build_context(
+    chunks,
+    memories=None,
+    recent_messages=None
+):
 
-    documents = extract_documents()
+    context_parts = []
 
-    chunks = build_chunks(documents)
+    # ---------------------------------
+    # Shared knowledge-base context
+    # ---------------------------------
 
-    if not chunks:
-        raise RuntimeError(
-            "No PDF text was found in the requirement folder."
+    if chunks:
+
+        knowledge_context = "\n\n".join(
+            f"""
+Source: {chunk["source"]}
+Page: {chunk["page"]}
+
+{chunk["text"]}
+"""
+            for chunk in chunks
         )
 
-    texts = [
-        chunk["text"]
-        for chunk in chunks
-    ]
+        context_parts.append(
+            "KNOWLEDGE BASE:\n"
+            + knowledge_context
+        )
 
-    embeddings = embedding_model.encode(
-        texts,
-        show_progress_bar=True
+    # ---------------------------------
+    # User semantic memory
+    # ---------------------------------
+
+    if memories:
+
+        memory_context = "\n\n".join(
+            memory["text"]
+            for memory in memories
+        )
+
+        context_parts.append(
+            "USER MEMORY:\n"
+            + memory_context
+        )
+
+    # ---------------------------------
+    # Recent conversation
+    # ---------------------------------
+
+    if recent_messages:
+
+        conversation_context = "\n\n".join(
+            f'{message["role"].upper()}: '
+            f'{message["content"]}'
+            for message in recent_messages
+        )
+
+        context_parts.append(
+            "RECENT CONVERSATION:\n"
+            + conversation_context
+        )
+
+    return "\n\n====================\n\n".join(
+        context_parts
     )
-
-    ids = [
-        f"{chunk['source']}-"
-        f"{chunk['page']}-"
-        f"{chunk['chunk']}"
-        for chunk in chunks
-    ]
-
-    metadatas = [
-        {
-            "source": chunk["source"],
-            "page": chunk["page"],
-            "chunk": chunk["chunk"]
-        }
-        for chunk in chunks
-    ]
-
-    collection.upsert(
-        ids=ids,
-        documents=texts,
-        embeddings=embeddings.tolist(),
-        metadatas=metadatas
-    )
-
-    return collection.count()
 
 
 def store_memory(
@@ -313,22 +333,6 @@ def retrieve(
 
     return relevant_chunks
 
-
-# Build LLM context
-
-def build_context(chunks):
-
-    return "\n\n".join(
-        f"""
-Source: {chunk["source"]}
-Page: {chunk["page"]}
-
-{chunk["text"]}
-"""
-        for chunk in chunks
-    )
-
-
 # Ask OpenRouter
 
 def ask_llm(question, context):
@@ -339,17 +343,34 @@ def ask_llm(question, context):
         )
 
     prompt = f"""
-You are a knowledge-base assistant.
+You are a helpful AI assistant.
 
-Answer the user's question using ONLY the
-information provided in the context.
+Use the information provided in the context to answer
+the user's question.
 
-If the context does not contain enough information,
-respond exactly:
+The context may contain:
+
+1. KNOWLEDGE BASE
+   Shared information extracted from the application's PDFs.
+
+2. USER MEMORY
+   Information remembered from this specific user.
+
+3. RECENT CONVERSATION
+   Recent messages from this specific user.
+
+Use USER MEMORY and RECENT CONVERSATION when the
+question is personal or conversational.
+
+Use KNOWLEDGE BASE when the question is about the
+provided documents or business information.
+
+Do not invent facts that are not supported by the context.
+
+If a question about the knowledge base cannot be
+answered from the knowledge-base context, say:
 
 I couldn't find enough information in the knowledge base.
-
-Do not invent information.
 
 Context:
 
@@ -392,11 +413,24 @@ Question:
 
 # Complete RAG pipeline
 
-def answer_question(question):
+def answer_question(
+    question,
+    user_id,
+    recent_messages=None
+):
 
+    # Retrieve shared PDF knowledge
     chunks = retrieve(question)
 
-    if not chunks:
+    # Retrieve this user's memories
+    memories = retrieve_memories(
+        question,
+        user_id
+    )
+
+    # If nothing useful was found
+
+    if not chunks and not memories and not recent_messages:
 
         return {
             "answer": (
@@ -406,12 +440,22 @@ def answer_question(question):
             "sources": []
         }
 
-    context = build_context(chunks)
+    # Build combined context
+
+    context = build_context(
+        chunks=chunks,
+        memories=memories,
+        recent_messages=recent_messages
+    )
+
+    # Ask OpenRouter
 
     answer = ask_llm(
         question,
         context
     )
+
+    # Sources
 
     sources = [
         {
