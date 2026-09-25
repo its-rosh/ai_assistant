@@ -8,7 +8,15 @@ A learning project where I build an AI assistant from scratch using:
 - VS Code
 - Git & GitHub
 - Render
+- 
+So we now have the foundation we wanted:
 
+✅ Multiple accounts
+✅ Separate authenticated sessions
+✅ Conversations associated with users
+✅ Semantic memories associated with users
+✅ Memory retrieval filtered by user_id
+✅ User A's memory doesn't leak into User B
 ## Current Goal
 
 Build an AI assistant that can:
@@ -30,12 +38,22 @@ The main goal of this project is not just to build the application, but to under
 ### Current Architecture
 
 ```text
-User
-  ↓
-Python Application
-  ↓
+User message
+      ↓
+get_messages()
+      ↓
+PostgreSQL
+      ↓
+retrieve previous messages
+      ↓
+build messages[]
+      ↓
+current question
+      ↓
 OpenRouter
-  ↓
-LLM
-  ↓
-Response
+      ↓
+Ling model
+      ↓
+response
+      ↓
+save response to PostgreSQL
